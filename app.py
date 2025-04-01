@@ -1,10 +1,11 @@
 import streamlit as st
 import os
-import re
+import re # Added for LLM output parsing
 import requests
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 from huggingface_hub import InferenceClient
+from urllib.parse import urlparse # Added for URL validation and subject refinement
 
 # --- Configuration ---
 
@@ -38,7 +39,7 @@ except Exception as e:
 DEFAULT_MODEL = "mistralai/Mistral-7B-Instruct-v0.1"
 MAX_SCRAPED_TEXT_LENGTH = 4000 # Limit text sent to LLM to manage tokens/cost
 
-# --- Helper Functions --- 
+# --- Helper Functions ---
 
 def clean_text(text):
     """Removes excessive whitespace and non-printable chars."""
@@ -52,35 +53,48 @@ def scrape_website_content(url: str) -> str | None:
     try:
         # Send GET request to the URL
         response = requests.get(url, timeout=60)  # Timeout after 60 seconds
-        if response.status_code != 200:
-            st.error(f"Failed to fetch the webpage. Status code: {response.status_code}")
-            return None
+        response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
 
         # Parse the HTML content using BeautifulSoup
         soup = BeautifulSoup(response.content, 'html.parser')
 
-        # Remove script, style, and other non-relevant elements
-        for element in soup(['script', 'style', 'nav', 'footer', 'header', 'aside']):
-            element.decompose()
+        # --- Initial cleanup (optional but can speed up processing) ---
+        # Remove elements less likely to be part of main content early
+        for element in soup(['script', 'style', 'aside', 'link', 'meta']):
+             element.decompose()
 
-        # Extract main content from 'main', 'article', or 'body' tags
+        # --- Find the main content area ---
         main_content = soup.find('main') or soup.find('article') or soup.find('div', role='main')
-        if main_content:
-            raw_text = main_content.get_text(separator=' ', strip=True)
-        else:
-            # Fallback to body if specific main tags aren't found
-            body = soup.find('body')
-            if body:
-                raw_text = body.get_text(separator=' ', strip=True)
+        target_element = main_content or soup.find('body') # Fallback to body
 
-        st.success(f"Successfully scraped content from {url}")
-        return clean_text(raw_text)
+        if target_element:
+             # --- Clean *within* the target element ---
+             # Remove common non-content tags that might be *inside* the main area
+             elements_to_remove = ['script', 'style', 'nav', 'footer', 'header', 'aside', 'button', 'form', 'iframe', 'img', 'figure', 'figcaption']
+             for tag_name in elements_to_remove:
+                 for element in target_element.find_all(tag_name):
+                     element.decompose()
+
+             # Extract text from the cleaned target element
+             raw_text = target_element.get_text(separator=' ', strip=True)
+             st.success(f"Successfully scraped content from {url}")
+             return clean_text(raw_text) # Apply final cleaning
+        else:
+            # This case is less likely now with the body fallback, but good practice
+            st.error(f"Could not find 'main', 'article', 'div[role=main]', or even 'body' tag in the page structure of {url}.")
+            return None
 
     except requests.exceptions.Timeout:
         st.error(f"Timeout error when trying to load {url}. The page might be too slow or complex.")
         return None
+    except requests.exceptions.HTTPError as e:
+         st.error(f"Failed to fetch the webpage. Status code: {e.response.status_code}. Reason: {e.response.reason}. This might be due to access restrictions (like 403 Forbidden).")
+         return None
+    except requests.exceptions.RequestException as e:
+        st.error(f"A network error occurred while trying to fetch {url}: {e}")
+        return None
     except Exception as e:
-        st.error(f"An error occurred during scraping {url}: {e}")
+        st.error(f"An unexpected error occurred during scraping {url}: {e}")
         return None
 
 def generate_llm_pitch(scraped_content: str, business_url: str, model_name: str) -> str | None:
@@ -127,12 +141,22 @@ def generate_llm_pitch(scraped_content: str, business_url: str, model_name: str)
             top_p=0.9,           # Nucleus sampling
             repetition_penalty=1.1 # Penalize repeating words
         )
-        # The response might include the prompt or other artifacts depending on the model,
-        # try to clean it up if necessary. Often the core generated text is the main part.
-        # Simple extraction: assume the response *is* the email. More robust parsing might be needed.
-        generated_email = response.strip()
-        st.success("Email pitch generated successfully!")
-        return generated_email
+        raw_output = response.strip()
+
+        # --- Recommendation 1: More Robust LLM Output Parsing ---
+        # Try to find the start of the email content (e.g., "Subject:")
+        # Use regex for case-insensitivity and potential whitespace variations
+        match = re.search(r"Subject:", raw_output, re.IGNORECASE | re.MULTILINE) # Added MULTILINE flag
+        if match:
+            # Extract from the start of "Subject:" onwards
+            generated_email = raw_output[match.start():]
+            st.success("Email pitch generated successfully!")
+            return generated_email.strip() # Strip again just in case
+        else:
+            # Fallback if "Subject:" is not found
+            st.warning("Could not specifically find 'Subject:' in the LLM output. Returning the full response as is.")
+            st.success("Email pitch generated successfully (using fallback parsing)!")
+            return raw_output # Return the original stripped output
 
     except Exception as e:
         st.error(f"Error during LLM generation with model {model_name}: {e}")
@@ -144,28 +168,36 @@ st.set_page_config(layout="wide")
 st.title("🤖 AI Business Warmer for Automation Services")
 st.markdown("Enter a business owner's website URL. The AI will analyze it and generate a personalized cold outreach email pitching automation services.")
 
-# Allow model selection (optional, defaults to one known to work well)
+# --- Recommendation 3: Add Explicit Note on Scraping Limitations ---
+st.info("ℹ️ **Note:** This tool works best with websites built primarily with static HTML. It may struggle to extract content from sites heavily reliant on JavaScript (Single Page Applications) or those with strong anti-scraping protections (like Cloudflare or CAPTCHAs).")
+
+# Allow model selection
 available_models = [
     "mistralai/Mistral-7B-Instruct-v0.1",
     "google/gemma-7b-it",
     "HuggingFaceH4/zephyr-7b-beta",
     # Add other instruction-tuned models available on Inference API if desired
 ]
-# Ensure default is first in list for the selectbox
 if DEFAULT_MODEL not in available_models:
     available_models.insert(0, DEFAULT_MODEL)
 
 selected_model = st.selectbox("Select LLM Model (requires compatibility with Inference API):", available_models, index=available_models.index(DEFAULT_MODEL))
 
-
 website_url = st.text_input("Enter Business Website URL:", placeholder="https://www.examplebusiness.com")
 
 if st.button("🚀 Generate Outreach Email"):
     if website_url:
-        # Basic URL validation
-        if not (website_url.startswith('http://') or website_url.startswith('https://')):
-            st.warning("Please enter a valid URL starting with http:// or https://")
-        else:
+        # --- Recommendation 4: Refine URL Validation ---
+        try:
+            parsed_url = urlparse(website_url)
+            if not all([parsed_url.scheme in ['http', 'https'], parsed_url.netloc]):
+                 raise ValueError("Invalid URL structure. Must include scheme (http/https) and domain.")
+
+            # Basic startswith check is still okay as a quick filter but less critical now
+            # if not (website_url.startswith('http://') or website_url.startswith('https://')):
+            #      st.warning("Please double-check the URL format (should start with http:// or https://)")
+            # else: # Proceed if valid structure found
+
             with st.spinner(f"Analyzing {website_url}... Please wait."):
                 # Step 1: Scrape Website
                 scraped_data = scrape_website_content(website_url)
@@ -179,11 +211,39 @@ if st.button("🚀 Generate Outreach Email"):
 
                     if generated_pitch:
                         st.subheader("✨ Generated Email Pitch:")
-                        st.markdown(f"\n{generated_pitch}\n") # Use markdown code block for better formatting
+
+                        # --- Recommendation 5: Fallback for Business Name in Subject ---
+                        try:
+                            # Use the already parsed URL
+                            domain = parsed_url.netloc
+                            # Basic cleaning of domain for display
+                            if domain.startswith('www.'):
+                                domain = domain[4:]
+                            # Simple capitalization: example.com -> Example.com, my-domain.co.uk -> My-Domain.Co.Uk
+                            display_name = '.'.join(part.capitalize() for part in domain.replace('-', ' ').split('.'))
+                            display_name = display_name.replace(' ', '-') # Put dashes back if any
+
+                            # Check for generic placeholder in the first line (subject) and replace
+                            lines = generated_pitch.splitlines()
+                            generic_subject_part = "at Your Business"
+                            if lines and generic_subject_part in lines[0]:
+                                lines[0] = lines[0].replace(generic_subject_part, f"at {display_name}")
+                                generated_pitch = "\n".join(lines)
+                                st.caption(f"(Subject line potentially customized with domain name: {display_name})")
+
+                        except Exception as e:
+                            st.caption(f"(Could not automatically parse domain/refine subject line: {e})")
+                        # --- End subject refinement ---
+
+                        st.markdown(f"\n{generated_pitch}\n") # Use markdown for potential formatting
                     else:
-                        st.error("Failed to generate email pitch.")
+                        st.error("Failed to generate email pitch after scraping.") # More specific error context
                 else:
-                    st.error(f"Could not scrape content from {website_url}. Cannot generate pitch.")
+                    st.error(f"Could not get usable content from {website_url}. Cannot generate pitch.") # More specific
+
+        except ValueError as e:
+             st.error(f"Invalid URL entered: {e}. Please ensure it includes http:// or https:// and a valid domain name (e.g., https://www.example.com)")
+
     else:
         st.warning("Please enter a website URL.")
 
