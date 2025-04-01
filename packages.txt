@@ -7,3 +7,4 @@ libx11-6
 libasound2
 libdbus-glib-1-2
 libxt6
+libgbm1
