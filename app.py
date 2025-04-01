@@ -6,6 +6,36 @@ from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeo
 from bs4 import BeautifulSoup
 from huggingface_hub import InferenceClient
 
+import os
+import streamlit as st
+from playwright.sync_api import sync_playwright
+
+# Ensure Playwright browsers are installed
+if not os.path.exists(os.path.expanduser("~/.cache/ms-playwright")):
+    os.system("playwright install")
+
+# Function to fetch page title
+def get_page_title(url):
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.goto(url)
+        title = page.title()
+        browser.close()
+        return title
+
+# Streamlit UI
+st.title("Web Page Title Fetcher")
+url = st.text_input("Enter a URL:", "https://www.google.com")
+
+if st.button("Fetch Title"):
+    try:
+        title = get_page_title(url)
+        st.write(f"Page Title: {title}")
+    except Exception as e:
+        st.error(f"Error fetching page title: {e}")
+
+
 # --- Configuration ---
 
 # Load .env file if it exists (primarily for local development)
