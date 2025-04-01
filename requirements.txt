@@ -1,0 +1,6 @@
+streamlit
+beautifulsoup4
+playwright
+huggingface_hub
+python-dotenv
+lxml # Often a faster parser for BeautifulSoup
