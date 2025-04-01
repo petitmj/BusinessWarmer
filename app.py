@@ -9,6 +9,16 @@ from huggingface_hub import InferenceClient
 # --- Configuration ---
 load_dotenv()  # Load environment variables from .env file
 HF_API_TOKEN = os.getenv("HUGGINGFACEHUB_API_TOKEN")
+
+# Check if API token is available
+if not HF_API_TOKEN:
+    st.error("Hugging Face API token not found. Please set HUGGINGFACEHUB_API_TOKEN in your .env file.")
+    st.stop()
+
+# Initialize Hugging Face Inference Client
+try:
+    hf_client = InferenceClient(token=HF_API_TOKEN)
+# ... rest of the try block
 # Recommended: Choose a good instruction-following model available on the free Inference API tier
 # Examples: 'mistralai/Mistral-7B-Instruct-v0.1', 'google/gemma-7b-it', 'HuggingFaceH4/zephyr-7b-beta'
 DEFAULT_MODEL = "mistralai/Mistral-7B-Instruct-v0.1"
