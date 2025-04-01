@@ -4,9 +4,7 @@ import re
 from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 from bs4 import BeautifulSoup
-from huggingface_hub import InferenceClient
-
-import streamlit as st  
+from huggingface_hub import InferenceClient 
 from playwright.sync_api import sync_playwright  
 
 # Ensure set_page_config() is the FIRST Streamlit command
