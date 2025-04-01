@@ -1,23 +1,7 @@
 import streamlit as st
-from playwright.sync_api import sync_playwright, TimeoutError
+import requests
+from bs4 import BeautifulSoup
 import validators
-# Ensure Playwright browsers are installed before launching
-import os
-import subprocess
-
-# Ensure Playwright is installed
-try:
-    import playwright
-except ImportError:
-    subprocess.run(["pip", "install", "playwright"], check=True)
-
-# Ensure Playwright browsers are installed
-subprocess.run(["playwright", "install", "--with-deps"], check=True)
-
-# Now import Playwright properly
-from playwright.sync_api import sync_playwright
-
-print("✅ Playwright is installed and ready to use.")
 
 # Ensure set_page_config() is the FIRST Streamlit command
 st.set_page_config(layout="wide")
@@ -29,27 +13,23 @@ st.markdown("Enter a business owner's website URL. The AI will analyze it and pr
 # Input field for the user to enter a website URL
 url = st.text_input("Enter Website URL", "")
 
-# Function to fetch website content using Playwright
+# Function to fetch website content using requests & BeautifulSoup
 def fetch_website_content(url):
     # Validate URL
     if not validators.url(url):
         raise ValueError("Invalid URL format. Please enter a valid website URL.")
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36")
-        
-        try:
-            page.goto(url, timeout=10000)  # Set timeout to 10s
-            content = page.content()
-        except TimeoutError:
-            raise TimeoutError("The website took too long to load. Try another URL.")
-        except Exception as e:
-            raise RuntimeError(f"Unexpected error: {e}")
-        finally:
-            browser.close()
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     
-    return content
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()  # Raise an error for failed responses (e.g., 404, 500)
+        soup = BeautifulSoup(response.text, "html.parser")
+        return soup.prettify()
+    except requests.Timeout:
+        raise TimeoutError("The website took too long to load. Try another URL.")
+    except requests.RequestException as e:
+        raise RuntimeError(f"Failed to fetch webpage: {e}")
 
 # Button to trigger website analysis
 if st.button("Analyze Website"):
