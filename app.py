@@ -2,10 +2,22 @@ import streamlit as st
 from playwright.sync_api import sync_playwright, TimeoutError
 import validators
 # Ensure Playwright browsers are installed before launching
-from playwright.__main__ import main
+import os
+import subprocess
 
-main(["install"])
+# Ensure Playwright is installed
+try:
+    import playwright
+except ImportError:
+    subprocess.run(["pip", "install", "playwright"], check=True)
 
+# Ensure Playwright browsers are installed
+subprocess.run(["playwright", "install", "--with-deps"], check=True)
+
+# Now import Playwright properly
+from playwright.sync_api import sync_playwright
+
+print("✅ Playwright is installed and ready to use.")
 
 # Ensure set_page_config() is the FIRST Streamlit command
 st.set_page_config(layout="wide")
