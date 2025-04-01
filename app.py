@@ -7,36 +7,44 @@ from bs4 import BeautifulSoup
 from huggingface_hub import InferenceClient
 
 # --- Configuration ---
-load_dotenv()  # Load environment variables from .env file
-HF_API_TOKEN = os.getenv("HUGGINGFACEHUB_API_TOKEN")
 
-# Check if API token is available
+# Load .env file if it exists (primarily for local development)
+load_dotenv()
+
+# Try fetching the token from Streamlit secrets first (for deployed apps)
+# then fall back to environment variables (for local or other environments)
+HF_API_TOKEN = None # Initialize as None
+if hasattr(st, 'secrets') and "HUGGINGFACEHUB_API_TOKEN" in st.secrets:
+    # Use secret from Streamlit Cloud deployment
+    HF_API_TOKEN = st.secrets["HUGGINGFACEHUB_API_TOKEN"]
+    # st.info("Using token from Streamlit secrets.") # Optional: Uncomment for debugging
+else:
+    # Fallback for local development (using .env file) or other environments
+    HF_API_TOKEN = os.getenv("HUGGINGFACEHUB_API_TOKEN")
+    # if HF_API_TOKEN: # Optional: Uncomment for debugging
+    #     st.info("Using token from environment variable/.env file.") # Optional: Uncomment for debugging
+
+# Check if API token was found through EITHER method
 if not HF_API_TOKEN:
-    st.error("Hugging Face API token not found. Please set HUGGINGFACEHUB_API_TOKEN in your .env file.")
-    st.stop()
+    # Display error and stop if no token is found from secrets or .env
+    st.error("Hugging Face API token not found. Ensure 'HUGGINGFACEHUB_API_TOKEN' is set correctly in Streamlit secrets (for deployment) or your local .env file (for local testing).")
+    st.stop() # Stop execution if no token is found
 
-# Initialize Hugging Face Inference Client
+# --- Initialize Hugging Face Client (Do this ONCE, after token is confirmed) ---
 try:
     hf_client = InferenceClient(token=HF_API_TOKEN)
-# ... rest of the try block
+    # st.info("Hugging Face client initialized successfully.") # Optional: Uncomment for debugging
+except Exception as e:
+    st.error(f"Failed to initialize Hugging Face client: {e}")
+    st.stop()
+
+# --- Constants ---
 # Recommended: Choose a good instruction-following model available on the free Inference API tier
 # Examples: 'mistralai/Mistral-7B-Instruct-v0.1', 'google/gemma-7b-it', 'HuggingFaceH4/zephyr-7b-beta'
 DEFAULT_MODEL = "mistralai/Mistral-7B-Instruct-v0.1"
 MAX_SCRAPED_TEXT_LENGTH = 4000 # Limit text sent to LLM to manage tokens/cost
 
-# Check if API token is available
-if not HF_API_TOKEN:
-    st.error("Hugging Face API token not found. Please set HUGGINGFACEHUB_API_TOKEN in your .env file.")
-    st.stop()
-
-# Initialize Hugging Face Inference Client
-try:
-    hf_client = InferenceClient(token=HF_API_TOKEN)
-except Exception as e:
-    st.error(f"Failed to initialize Hugging Face client: {e}")
-    st.stop()
-
-# --- Helper Functions ---
+# --- Helper Functions --- # <<< Make sure the rest of your code starts below this line
 
 def clean_text(text):
     """Removes excessive whitespace and non-printable chars."""
