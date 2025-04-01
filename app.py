@@ -6,35 +6,41 @@ from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeo
 from bs4 import BeautifulSoup
 from huggingface_hub import InferenceClient
 
-import os
-import streamlit as st
-from playwright.sync_api import sync_playwright
+import streamlit as st  
+from playwright.sync_api import sync_playwright  
 
-# Ensure Playwright browsers are installed
-if not os.path.exists(os.path.expanduser("~/.cache/ms-playwright")):
-    os.system("playwright install")
-
-# Function to fetch page title
-def get_page_title(url):
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
-        page.goto(url)
-        title = page.title()
-        browser.close()
-        return title
+# Ensure set_page_config() is the FIRST Streamlit command
+st.set_page_config(layout="wide")
 
 # Streamlit UI
-st.title("Web Page Title Fetcher")
-url = st.text_input("Enter a URL:", "https://www.google.com")
+st.title("🤖 AI Business Warmer for Automation Services")
+st.markdown("Enter a business owner's website URL. The AI will analyze it and provide insights on automation opportunities.")
 
-if st.button("Fetch Title"):
-    try:
-        title = get_page_title(url)
-        st.write(f"Page Title: {title}")
-    except Exception as e:
-        st.error(f"Error fetching page title: {e}")
+# Input field for the user to enter a website URL
+url = st.text_input("Enter Website URL", "")
 
+# Function to fetch website content using Playwright
+def fetch_website_content(url):
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)  # Run in headless mode
+        page = browser.new_page()
+        page.goto(url)
+        content = page.content()  # Get HTML content
+        browser.close()
+        return content
+
+# Button to trigger website analysis
+if st.button("Analyze Website"):
+    if url:
+        try:
+            st.write("Fetching website content...")
+            website_content = fetch_website_content(url)
+            st.success("Website analysis completed!")
+            st.text_area("Extracted HTML Content", website_content, height=300)
+        except Exception as e:
+            st.error(f"Error fetching website: {e}")
+    else:
+        st.warning("Please enter a valid website URL.")
 
 # --- Configuration ---
 
