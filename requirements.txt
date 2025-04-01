@@ -1,6 +1,6 @@
 streamlit
-beautifulsoup4
 playwright
-huggingface_hub
+beautifulsoup4
+lxml
 python-dotenv
-lxml # Often a faster parser for BeautifulSoup
+huggingface_hub
