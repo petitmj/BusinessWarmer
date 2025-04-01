@@ -1,6 +1,11 @@
 import streamlit as st
 from playwright.sync_api import sync_playwright, TimeoutError
 import validators
+# Ensure Playwright browsers are installed before launching
+from playwright.__main__ import main
+
+main(["install"])
+
 
 # Ensure set_page_config() is the FIRST Streamlit command
 st.set_page_config(layout="wide")
